@@ -7336,7 +7336,7 @@ enum MenuOptions {
     MAB_SELECTION,
     GREEDY_SELECTION,
     // Single Optimization Algorithms
-    ITERATED_LOCAL_SEARCH = 12,
+    ITERATED_LOCAL_SEARCH = 7,
     SIMULATED_ANNEALING,
     TABU_SEARCH,
     FEASIBLE_LOCAL_SEARCH,
