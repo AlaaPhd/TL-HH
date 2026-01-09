@@ -1,0 +1,36 @@
+# depslib dependency file v1.0
+1767991174 source:d:\phd research materials\cmcee references\practical part\tl-hh-cmcee\main.cpp
+	<iostream>
+	<stdio.h>
+	<stdlib.h>
+	<iostream>
+	<sstream>
+	<fstream>
+	<string.h>
+	<time.h>
+	<ctime>
+	<vector>
+	<string.h>
+	<math.h>
+	<numeric>
+	<algorithm>
+	<unordered_set>
+	<functional>
+	<set>
+	<utility>
+	<thread>
+	<ctime>
+	<cstdlib>
+	<algorithm>
+	<bits/stdc++.h>
+	<map>
+	<string>
+	<iomanip>
+	<thread>
+	<vector>
+	<chrono>
+	<filesystem>
+	<regex>
+	<functional>
+	<mutex>
+
