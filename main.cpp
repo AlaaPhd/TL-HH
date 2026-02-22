@@ -6780,7 +6780,7 @@ std::string Hyper_heuristic::discretize_state(const StateFeatures& s) {
 enum LSAlgo { LS_SA = 1, LS_ILS, LS_TS, LS_GD, LS_LAHC, LS_BASIC };
 
 // Connects LS selection to your actual algorithm implementations
-int** Hyper_heuristic::run_LS(LSAlgo algo, int** team) {
+/*int** Hyper_heuristic::run_LS(LSAlgo algo, int** team) {
     switch (algo) {
         case LS_SA:    return simulated_annealing();       // your SA implementation
         case LS_ILS:   return iterated_local_search();     // your ILS implementation
@@ -6790,7 +6790,7 @@ int** Hyper_heuristic::run_LS(LSAlgo algo, int** team) {
         case LS_BASIC: return local_search();     // basic local search
         default:       return team;
     }
-}
+}*/
 int** Hyper_heuristic::Apply_LS_OP(int LSi, int OPj, int** Sstart)
 {
     // Start from the provided solution
@@ -6837,14 +6837,14 @@ int** Hyper_heuristic::Apply_LS_OP(int LSi, int OPj, int** Sstart)
 // LLH 1–14 → atomic neighborhood structures
 int** Hyper_heuristic::apply_LLHop(int op_id, int** sol) {
     switch (op_id) {
-        case  1: return LLH24(sol);
-        case  2: return LLH17(sol);
-        case  3: return LLH18(sol);
-        case  4: return LLH19(sol);
-        case  5: return LLH20(sol);
-        case  6: return LLH21(sol);
-        case  7: return LLH22(sol);
-        case  8: return LLH23(sol);
+        case  1: return LLH1(sol);
+        case  2: return LLH2(sol);
+        case  3: return LLH3(sol);
+        case  4: return LLH4(sol);
+        case  5: return LLH5(sol);
+        case  6: return LLH6(sol);
+        case  7: return LLH7(sol);
+        case  8: return LLH8(sol);
         case  9: return LLH9(sol);
         case 10: return LLH10(sol);
         case 11: return LLH17(sol);
@@ -6862,7 +6862,7 @@ enum MA_Strategy { MA_ONLY_IMPROVE = 1, MA_ACCEPT_ALL, MA_SA, MA_R2R, MA_THRESHO
 double SA_Temp       = 100.0;     // starting temperature
 double SA_Cooling    = 0.995;
 double R2R_Threshold = 5.0;
-double TH_Threshold  = 3.0;
+double TH_Threshold  = 0.15;
 double decay_R2R     = 0.999;
 double decay_TH      = 0.999;
 int    R2R_record_eff = std::numeric_limits<int>::lowest();
@@ -6928,7 +6928,7 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time) {
     std::cout << "Initial Solution:\n";
     //generate_initialrandom();
     objective_Function(team);
-    display(team);
+    //display(team);
     std::cout << "\n===================================================================\n\n";
     std::cout << "Initial objective functions: Eff=" << f_cur << " | Div=" << f_cur_div << "\n\n";
     std::cout << "===================================================================\n\n";
@@ -6965,6 +6965,7 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time) {
     double alpha = 0.7, gamma = 0.6;
     double eps_LS = 1.0, eps_OP = 1.0, eps_MA = 1.00;
     double eps_decay = 0.99, eps_min = 0.05;
+	double F = 0.15;
     double SA_temp = 1.0, SA_init = 1.0;
     double flex = 1.0, flex_max = 1.0;
     // -------------------------------------------------
@@ -7637,4 +7638,5 @@ int main(int argc, char *argv[])
     free_memory();
     return 0;
 }
+
 
