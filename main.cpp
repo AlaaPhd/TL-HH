@@ -269,7 +269,6 @@ private:
     int**  Sbest;
     double fbest_efficiency;
     double fbest_diversity;
-    std::vector<int> hyperHeuristics = {1, 2, 3, 4, 5};
     std::map<int, double> heuristicPerformance;
     std::vector<std::vector<int>> Sinput;
     std::vector<std::vector<int>> Soutput;
@@ -347,10 +346,7 @@ public:
     int    max_func(int*, int); // <-- ✅ Add this
     int    rand_func(int *, int);
     int    calculate_efficiency(const Inner&);
-    int    calculate_efficiency12(int*, int);
-    std::pair<int,int> objective_after_LLH(int **);
     double calculate_diversity(const Inner&);
-    double calculate_diversity12(int* , int );
     int    select_max_multiple(int *, int *, int &);
     int**  Apply_LS_OP(int, int , int**);
     // -------------------------------------------------------------------------
@@ -363,13 +359,10 @@ public:
     int     variable_neighborhood_search(int);
     int     Hill_Late_Acceptance();
     int**   iterated_local_search();
-    int**   GRASP();
     int     iterated_local_search12();
-    int     Multi_O_Iterated_local_search();
     int**   simulated_annealing();
     int**   memetic();
     void    HH_RL_GD();
-    int**   improvise_New_HM();
 
     // -------------------------------------------------------------------------
     // Local Search Operators
@@ -389,54 +382,29 @@ public:
     void initialSolRefined1();
     void initial_population();
     int  generate_initialrandom();
-    int  Greedy_Randomized_list();
     int  generate_initial();
-    void initial_HM();
 
 
     // -------------------------------------------------------------------------
     // Repair Functions
     // -------------------------------------------------------------------------
-    void repairDiversity(Inner &team, double min_div, std::unordered_set<std::size_t> &visitedHashes);
-    void repairDiversity(Inner &, double);
     void repairSolutions();
     void repair_solution();
-    void repair_solution_restrict();
-    void repair_solution12();
-    void repair_duplicates(Outer& , int , int , int , Outer& );
 
 
     // -------------------------------------------------------------------------
     // Swap and Mutation Operators
     // -------------------------------------------------------------------------
-    int** swap_LLH1(int &, int &);
-    int** swap_LLH2(int &, int &);
-    int** swap_LLH3(int **);
-    int** swap_LLH4(int**);
-    int** swap_LLH5(int**);
-    int** swap_LLH6(int**);
-    int** swap_LLH7(int **);
-    int   shift(int , int &, int &);
-    int   reassignment(int , int &, int &,int );
-    int   ruin_and_recreate(int , int &, int &);
-    int** ruin_and_recreate(int **);
     int   swap1(int , int &, int &);
     int   swap_ils(int , int &, int &);
     int   swap_min(int , int &, int &);
-    int   swap_min_with_z(int , int &, int &);
-    double swap_min12(int , int &, int &);
     void  inverse_operator();
     void  randomSwap();
-    void  perturbRAssign(int**);
 
     // -------------------------------------------------------------------------
     // Crossover Operators
     // -------------------------------------------------------------------------
     void  cross_over2();
-    int** SoftBackboneCrossover(int**, int**);
-    int** PertubILS(int**);
-    int** perturb(int **);
-    int** perturbation(int **);
 
     // -------------------------------------------------------------------------
     // Tabu & Utility Functions
@@ -488,52 +456,16 @@ public:
     // Selection Hyper-Heuristic Strategies
     // -------------------------------------------------------------------------
     void  hyper_heuristic1();
-    int   getHeuristicsOfTypelocal();
-    int   getHeuristicsOfTypeMutation();
-    int   getHeuristicsOfTypeCROSSOVER();
-    void  Random_Selection_Hyperheuristic_CMCEE11(int );
     void  Random_Selection_Hyperheuristic_CMCEE(int );
     void  HH_Choice_Function_Selection_CMCEE(int);
-    void  SSHH_Selection_Hyperheuristic_CMCEE(int);
-    void  Adaptive_SSHH_Selection_Hyperheuristic_CMCEE(int);
-
-    std::tuple<int**, double, std::vector<std::vector<int>>,
-           std::map<int, std::vector<double>>,
-           std::map<int, std::vector<double>>,
-           std::map<int, std::vector<int>>> ADSH_random(int, double );
-    std::tuple<
-        int**,                              // final team array
-        double,                             // best efficiency
-        std::vector<std::vector<int>>,      // L  (log of selections)
-        std::map<int, std::vector<double>>, // cost     per LLH
-        std::map<int, std::vector<double>>, // time     per LLH
-        std::map<int, std::vector<int>>     // iterations per LLH
-    >
-    ADSH_pairHH(double optimal);
-    void testingmethods_ADSH_R(double );
-    void compare_acceptance_criteria(double );
-    void MAB_Selection_Hyperheuristic_CMCEE(int);
-    void MAHH_Algorithm(int );
-    void MAHH_Selection_CMCEE(int);
-    void MAHH_Selection_ThreeMAB(int max_time, MABStrategy mab_strategy);
-    void MAHH_Algorithm12(int max_time, MABStrategy mab_strategy);
-    void Greedy_Selection_Hyperheuristic_CMCEE(int);
-    void Tabu_Search_Hyperheuristic_Adaptive_Acceptance(int);
+    void  MAB_Selection_Hyperheuristic_CMCEE(int);
+    void  Greedy_Selection_Hyperheuristic_CMCEE(int);
     // Q-Learning Based Selection Function
     void Q_Learning_Selection_Hyperheuristic_CMCEE(int);
-    void Q_Learning_Selection_Hyperheuristic_CMCEE1(int);
-    void Q_Learning_Selection_Hyperheuristic_CMCEE_DHSS(int);
-    // Example definition of Q_Learning_Refined
-    void Q_Learning_Refined(int);
     void TriLevel_HH_Qlearning_CMCEE(int);
-     // MAB Refined
-   void MAB_Refined(int , const std::vector<int>& );
-   // Greedy Refined
-   void Greedy_Refined(int , const std::vector<int>& );
+     
 
     // Choice Function Refined
-    void ChoiceFunction_Refined(int, const std::vector<int>&);
-
     void execute_algorithm(int , const std::string&);
     void runSingleOptimizationAlgorithm(int , int );
 
@@ -541,7 +473,6 @@ public:
     // Utility and Display
     // -------------------------------------------------------------------------
     void display(int**);
-    void displayResults();
     void check_best_solution();
     bool dominates(int , int , int , int );
 
@@ -2100,8 +2031,6 @@ int** Hyper_heuristic::IteratedLocalSearch(int** Sstart, int OPj)
     // 14. Return best solution
     //-----------------------------------------------------------------
     team = Sbest;
-    objective_Function1(team);
-
     //std::cout << "Convergence saved to: " << conv_path << std::endl;
     return team;
 }
@@ -3479,7 +3408,7 @@ void Hyper_heuristic::Parameters()
 	//beta = 0.4
 	tabu_tenure = 10;
 	generations = 50;
-	fls_depth = 4000;
+	fls_depth = 3000;
 	ils_depth = 1000;
 	int    f1, f2, f3, f4, f5, f6, f7, f8, f9;
 	double f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23;
@@ -5231,38 +5160,36 @@ int** Hyper_heuristic::ApplyMeta_Heuristic(int h, int** solution)
     // ---------------------------------------------------------
 
     case 0:
-        f_cur = feasible_local_search();
-        // Metaheuristic: infeasible local search: Apply local hill-climbing / feasible_local_search() on current solution.
+		Scurrent = simulated_annealing();
+        // Metaheuristic: Simulated Annealing (SA)
         break;
-
     case 1:
-        Scurrent = infeasible_local_search();
-        // Metaheuristic: infeasible local search
+		Scurrent = iterated_local_search();
+        // Metaheuristic: Iterated Local Search (ILS)
         break;
-
     case 2:
         Scurrent = fits();
         // Metaheuristic: Tabu Search (FITS)
         break;
 
     case 3:
-        Scurrent = iterated_local_search();
-        // Metaheuristic: Iterated Local Search (ILS)
+        Scurrent = great_deluge_algorithm();
+        // Metaheuristic: Great Deluge
         break;
 
     case 4:
-        Scurrent = simulated_annealing();
-        // Metaheuristic: Simulated Annealing (SA)
+        Scurrent = late_acceptance_hill_climbing();
+        // Metaheuristic: LAHC
         break;
 
     case 5:
-        Scurrent = memetic();
-        // Metaheuristic: Memetic Algorithm
+		Scurrent = infeasible_local_search();
+        // Metaheuristic: infeasible local search
         break;
 
     case 6:
-        Scurrent = great_deluge_algorithm();
-        // Metaheuristic: Great Deluge
+        f_cur = feasible_local_search();
+        // Metaheuristic: infeasible local search: Apply local hill-climbing / feasible_local_search() on current solution.
         break;
 
     case 7:
@@ -5271,8 +5198,8 @@ int** Hyper_heuristic::ApplyMeta_Heuristic(int h, int** solution)
         break;
 
     case 8:
-        Scurrent = late_acceptance_hill_climbing();
-        // Metaheuristic: LAHC
+        Scurrent = memetic();
+        // Metaheuristic: Memetic Algorithm
         break;
 
     default:
@@ -5314,7 +5241,7 @@ void Hyper_heuristic::Greedy_Selection_Hyperheuristic_CMCEE(int max_time) {
     // ------------------------------------------------------------
     // HEURISTICS & TRACKING
     // ------------------------------------------------------------
-    std::vector<int> heuristics = {17,18,19,20,21,22,23};
+    std::vector<int> heuristics = {0,1,2,3,4,5,6};
     //std::vector<int> heuristics = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16, 17, 18, 19, 20, 22,23};
     std::map<int,double> heuristic_scores;
     for (auto h : heuristics) heuristic_scores[h] = 0.0;
@@ -7638,5 +7565,6 @@ int main(int argc, char *argv[])
     free_memory();
     return 0;
 }
+
 
 
