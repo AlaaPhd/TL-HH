@@ -7516,6 +7516,15 @@ int main(int argc, char *argv[])
 		        H.Parameters();
 		        H.initialization(current_file);
 		        H.generate_initialrandom();
+                H.display(team);
+                // Display problem info
+                std::cout << "num_node="  << num_node
+                        << "  num_team=" << num_team
+                        << "  num_each_t=" << num_each_t
+                        << "  min_div="   << min_div << "\n";
+                std::cout << "F_cur : "<< f_cur
+                      <<" Div_cur : "<<f_cur_div<< "\n";
+
 		
 		        auto start = std::chrono::steady_clock::now();
 		
@@ -7603,6 +7612,10 @@ int main(int argc, char *argv[])
     free_memory();
     return 0;
 }
+
+
+
+
 
 
 
