@@ -1,78 +1,32 @@
-How to Run
-🖥 OPTION 1 — Windows Local Execution
-Step 1 — Download Dataset
+Execution Options
+Option 1 — Windows Local Execution
 
-Extract dataset files into:
-
-D:\Datasets\
-
-Expected structure:
+Download and extract the dataset files into the folder:
 
 D:\Datasets\
-    01-P100T10M6.txt
-    02-P200T10M12.txt
-    ...
-Step 2 — Verify Dataset Path
 
-Ensure main() contains:
+Ensure the program path in main() is set to:
 
 std::string datasetDir = "D:/Datasets/";
-Step 3 — Compile
 
-Using MinGW:
+Compile the program using MinGW or Visual Studio in Release mode, then run the executable.
+Results will be automatically saved inside:
 
-g++ -std=c++17 -O2 main.cpp -o CMCEE.exe
-CMCEE.exe
+D:\Datasets\
 
-Or build in Release mode using Visual Studio.
+Option 2 — GitHub Codespaces Execution
 
-Step 4 — Select Method
-
-Program menu:
-
-1–7 : Hyper-Heuristic Methods
-8   : Single Optimization Algorithms
-0   : EXIT
-
-If selecting option 8, the following menu appears:
-
-1  : ILS
-2  : SA
-3  : TS
-4  : FLS
-5  : IFLS
-6  : MA
-7  : GD
-8  : VNS
-9  : LAHC
-10 : GLS
-11 : HSA
-Step 5 — Results
-
-Results are automatically saved in:
-
-D:\Datasets\MHs_Algorithm_Results\
-
-Generated files:
-
-Results_ALGO.csv
-
-Best_Solution_ALGO.txt
-
-☁ OPTION 2 — GitHub Codespaces Execution
-Step 1 — Upload Dataset
-
-Place dataset inside repository:
+Upload the dataset folder into the repository under:
 
 /Datasets/
-Step 2 — Update Dataset Path
 
-Modify in main():
+Modify the dataset path in main() to:
 
-std::string datasetDir = "Datasets/";
-Step 3 — Compile and Run
+std::string datasetDir   = "/workspaces/TL-HH/Datasets";
 
-Inside Codespace terminal:
+Compile and run the program using the Codespace terminal:
 
 g++ -std=c++17 -O2 main.cpp -o CMCEE
 ./CMCEE
+
+Results will be saved inside the repository directory.
