@@ -7404,7 +7404,7 @@ int main(int argc, char *argv[])
 {
 	//srand((unsigned)time(NULL));
 	if (argc < 1)	{
-		cout << "usage: MA.exe input_file";
+		cout << "usage: input_file";
 		exit(1);
 	}
 
@@ -7419,7 +7419,6 @@ int main(int argc, char *argv[])
     }
 
     Hyper_heuristic H;
-    int max_time = 600; // time limit for all runs
 
     // ====================================================
     //              MAIN MENU LOOP
@@ -7474,97 +7473,137 @@ int main(int argc, char *argv[])
         }
 
         // ====================================================
-        //           RUN SELECTED METHOD ON ALL INSTANCESdatasetFiles.size()
+        //           RUN SELECTED METHOD ON ALL INSTANCES datasetFiles.size()
         // ====================================================
-        for (size_t idx = 0; idx < datasetFiles.size() ; idx++) {
-
-            std::string current_file   = datasetFiles[idx];
-            fs::path p(current_file);
-            std::string rawName        = p.filename().string();
-            instanceName               = parseInstanceName(rawName);
-
-            if (instanceName.empty()) {
-                std::cerr << "[WARNING] Could not parse instance: " << rawName << "\n";
-                continue;
-            }
-
-            std::cout << "\nProcessing Instance " << (idx + 1)
-                      << "/" << datasetFiles.size() << "\n";
-            std::cout << "Instance Name: " << instanceName << "\n";
-
-            std::string resultsPath = resultsDir + "Results_" + instanceName + ".txt";
-
-            std::ofstream resultsFile(resultsPath);
-            if (!resultsFile) {
-                std::cerr << "Error writing to: " << resultsPath << "\n";
-                continue;
-            }
-
-            resultsFile << "Method\tBestEff\tBestDiv\tTime(sec)\n";
-
-            H.Parameters();
-            H.initialization(current_file);
-            std::cout<<"\n Initial Random Solution:\n";
-            H.generate_initialrandom();
-            H.display(team);
-
-            // Display problem info
-            std::cout << "num_node="  << num_node
-                      << "  num_team=" << num_team
-                      << "  num_each_t=" << num_each_t
-                      << "  min_div="   << min_div << "\n";
-
-            switch (choice) {
-                case 1:
-                    H.Q_Learning_Selection_Hyperheuristic_CMCEE(max_time);
-                    resultsFile << "QL_HH\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-
-                case 2:
-                    H.HH_Choice_Function_Selection_CMCEE(max_time);
-                    resultsFile << "CF_HH\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-
-                case 3:
-                    H.Random_Selection_Hyperheuristic_CMCEE(max_time);
-                    resultsFile << "Random_HH\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-
-                case 4:
-                    H.MAB_Selection_Hyperheuristic_CMCEE(max_time);
-                    resultsFile << "MAB_HH\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-
-                case 5:
-                    H.Greedy_Selection_Hyperheuristic_CMCEE(max_time);
-                    resultsFile << "Greedy_HH\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-
-                case 6:
-                    H.TriLevel_HH_Qlearning_CMCEE(max_time);
-                    resultsFile << "TriLevel_HH\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-
-                case 7:
-                    H.runSingleOptimizationAlgorithm(single_choice, max_time);
-                    resultsFile << "Algorithm_" << single_choice
-                                << "\t" << best_eff << "\t" << best_div << "\t" << time_taken << "\n";
-                    break;
-            }
-
-            resultsFile.close();
-            std::cout << "Saved: " << resultsPath << "\n";
-            std::cout << "--------------------------------------------------------\n";
-        }
-
-        std::cout << "\nRun complete. Press ENTER to return to menu...";
-        std::cin.ignore();
-        std::cin.get();
-    }
-
+        const int INDEPENDENT_RUNS = 31;
+		int max_time = 600; // 10 minutes
+		
+		for (size_t idx = 0; idx < datasetFiles.size(); idx++) {
+		
+		    std::string current_file = datasetFiles[idx];
+		    fs::path p(current_file);
+		    std::string rawName = p.filename().string();
+		    instanceName = parseInstanceName(rawName);
+		
+		    if (instanceName.empty()) continue;
+		
+		    std::cout << "\n=====================================\n";
+		    std::cout << "Instance: " << instanceName << "\n";
+		    std::cout << "=====================================\n";
+		
+		    std::string resultsPath =
+		        resultsDir + "Results_" + instanceName + ".csv";
+		
+		    std::ofstream resultsFile(resultsPath);
+		    resultsFile << "Run,BestEff,BestDiv,Time(sec)\n";
+		
+		    // Store statistics
+		    std::vector<double> eff_values;
+		    std::vector<double> div_values;
+		    std::vector<double> time_values;
+		
+		    double global_best_eff = -1e9;
+		    double global_best_div = 0;
+		    int best_run_id = 0;
+		
+		    // ===========================
+		    // 31 Independent Runs
+		    // ===========================
+		    for (int run = 1; run <= INDEPENDENT_RUNS; run++) {
+		
+		        srand((unsigned)time(NULL) + run);
+		
+		        H.Parameters();
+		        H.initialization(current_file);
+		        H.generate_initialrandom();
+		
+		        auto start = std::chrono::steady_clock::now();
+		
+		        switch (choice) {
+		            case 1: H.Q_Learning_Selection_Hyperheuristic_CMCEE(max_time); break;
+		            case 2: H.HH_Choice_Function_Selection_CMCEE(max_time); break;
+		            case 3: H.Random_Selection_Hyperheuristic_CMCEE(max_time); break;
+		            case 4: H.MAB_Selection_Hyperheuristic_CMCEE(max_time); break;
+		            case 5: H.Greedy_Selection_Hyperheuristic_CMCEE(max_time); break;
+		            case 6: H.TriLevel_HH_Qlearning_CMCEE(max_time); break;
+		            case 7: H.runSingleOptimizationAlgorithm(single_choice, max_time); break;
+		        }
+		
+		        auto end = std::chrono::steady_clock::now();
+		        double time_taken =
+		            std::chrono::duration<double>(end - start).count();
+		
+		        eff_values.push_back(best_eff);
+		        div_values.push_back(best_div);
+		        time_values.push_back(time_taken);
+		
+		        if (best_eff > global_best_eff) {
+		            global_best_eff = best_eff;
+		            global_best_div = best_div;
+		            best_run_id = run;
+		        }
+		
+		        resultsFile << run << ","
+		                    << best_eff << ","
+		                    << best_div << ","
+		                    << time_taken << "\n";
+		
+		        std::cout << "Run " << run << " completed.\n";
+		    }
+		
+		    // ===========================
+		    // Compute Statistics
+		    // ===========================
+		
+		    auto compute_mean = [](const std::vector<double>& v) {
+		        return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
+		    };
+		
+		    auto compute_std = [&](const std::vector<double>& v) {
+		        double mean = compute_mean(v);
+		        double sum = 0.0;
+		        for (double x : v)
+		            sum += (x - mean) * (x - mean);
+		        return std::sqrt(sum / (v.size() - 1));
+		    };
+		
+		    double mean_eff = compute_mean(eff_values);
+		    double std_eff  = compute_std(eff_values);
+		    double min_eff  = *std::min_element(eff_values.begin(), eff_values.end());
+		    double max_eff  = *std::max_element(eff_values.begin(), eff_values.end());
+		
+		    double mean_div = compute_mean(div_values);
+		    double std_div  = compute_std(div_values);
+		
+		    double mean_time = compute_mean(time_values);
+		    double std_time  = compute_std(time_values);
+		
+		    // ===========================
+		    // Write Summary to CSV
+		    // ===========================
+		
+		    resultsFile << "\nSUMMARY\n";
+		    resultsFile << "MeanEff," << mean_eff << "\n";
+		    resultsFile << "StdEff,"  << std_eff  << "\n";
+		    resultsFile << "MinEff,"  << min_eff  << "\n";
+		    resultsFile << "MaxEff,"  << max_eff  << "\n";
+		    resultsFile << "MeanDiv," << mean_div << "\n";
+		    resultsFile << "StdDiv,"  << std_div  << "\n";
+		    resultsFile << "MeanTime," << mean_time << "\n";
+		    resultsFile << "StdTime,"  << std_time  << "\n";
+		    resultsFile << "BestOverallRun," << best_run_id << "\n";
+		    resultsFile << "BestOverallEff," << global_best_eff << "\n";
+		    resultsFile << "BestOverallDiv," << global_best_div << "\n";
+		
+		    resultsFile.close();
+		
+		    std::cout << "CSV saved: " << resultsPath << "\n";
+		}
+	}
     free_memory();
     return 0;
 }
+
 
 
 
