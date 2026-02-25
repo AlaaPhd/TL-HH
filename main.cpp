@@ -7028,7 +7028,7 @@ int main(int argc, char *argv[])
         //           RUN SELECTED METHOD ON ALL INSTANCESdatasetFiles.size()
         // ====================================================
         const int INDEPENDENT_RUNS = 31;
-        const int max_time = 60; // 10 minutes per run
+        const int max_time = 600; // 10 minutes per run
 
         for (size_t idx = 0; idx < datasetFiles.size(); idx++)
         {
@@ -7168,3 +7168,4 @@ int main(int argc, char *argv[])
     free_memory();
     return 0;
 }
+
