@@ -56,7 +56,7 @@ double min_div;                           // the diversity threshold of each cre
 double **div_in;                          // the diversity between each pair of practitioners
 int *eff;                                 // efficiency of practitioners
 int f_cur_div;
-double d_min = 0.8; // d_min = {0.8,1.0,1.05}
+double d_min = 1.05; // d_min = {0.8,1.0,1.05}
 double beta = 0.4;  // beta = 0.4
 int fbest_eff;
 int fbest_div;
@@ -289,7 +289,10 @@ public:
     int **ApplyHeuristic(int, int **);
     int **ApplyMeta_Heuristic(int, int **);
 
+    using Solution = std::vector<std::vector<int>>;
+    void objective_Function1(const Solution& S);
 
+    void apply_LLHop(int OPj, Solution& S);
     // -------------------------------------------------------------------------
     // Function Selection (TRI-LEVEL Hyper-Heuristic) and Application
     // -------------------------------------------------------------------------
@@ -301,8 +304,12 @@ public:
     // ---- Operator selection (Level 2) ----
     int **apply_LLHop(int op_id, int **sol);
     void apply_atomic_swap(int, int );
+    int ** allocate_solution();
 
-
+    Solution SimulatedAnnealing(const Solution& Sstart,
+                             int OPj,
+                             double T0,
+                             double alpha);
     // -------------------------------------------------------------------------
     // Low-Level Heuristics (LLH)
     // -------------------------------------------------------------------------
@@ -321,6 +328,7 @@ public:
     int **LLH13(int **);
     int **LLH14(int **);
     int **LLH15(int **);
+    int **LLH16(int **);
 
 
     // -------------------------------------------------------------------------
@@ -454,6 +462,7 @@ public:
         MA_THRESHOLD
     };
     bool accept_move(MA_Strategy rule, int cur_eff, int cur_div, int new_eff, int new_div, double min_div);
+    void delete_solution(int **sol);
     // -------------------------------------------------------------------------
     // Destructor
     // -------------------------------------------------------------------------
@@ -493,7 +502,26 @@ public:
         delete[] aa;
     }
 };
+void Hyper_heuristic::delete_solution(int **sol)
+{
+    for (int t = 0; t <= num_team; t++)
+        delete[] sol[t];
 
+    delete[] sol;
+}
+
+int **Hyper_heuristic::allocate_solution()
+{
+    int **sol = new int*[num_team + 1];
+
+    for (int t = 0; t <= num_team; t++)
+    {
+        // allocate maximum possible size
+        sol[t] = new int[num_node];
+    }
+
+    return sol;
+}
 int Hyper_heuristic::select_max_multiple(int *best_node, int *best_team, int &num_best)
 {
     double max = -1000000;
@@ -1034,7 +1062,7 @@ void Hyper_heuristic::repair_solution()
         team_old = state[c1];
         int a1 = address[node1];
         int a2 = address[node2];
-        if (team_old == 0)
+        if (team_old == 0)//here if we swap with team 0
         {
             tabu_list[node1][team_old] = iter + tl + randomInt(tabu_tenure);
             w_div[team_min] = w_div[team_min] + delta_div[node1][team_min] - delta_div[node2][team_min] - div_in[node1][node2];
@@ -1051,7 +1079,7 @@ void Hyper_heuristic::repair_solution()
             team[team_old][a1] = node2;
             address[node2] = a1;
         }
-        else
+        else // here if we swap with any other team
         {
             tabu_list[node1][team_old] = iter + tl + randomInt(tabu_tenure);
             w_div[team_min] = w_div[team_min] + delta_div[node1][team_min] - delta_div[node2][team_min] - div_in[node1][node2];
@@ -1674,115 +1702,199 @@ int **Hyper_heuristic::IteratedLocalSearch(int **Sstart, int OPj)
 {
     int max_iter = 100;
 
-    int **S = clone_solution(Sstart);
+    // Allocate working matrices
+    int **S     = allocate_solution();
+    int **Sbest = allocate_solution();
+    int **Spert = allocate_solution();
+
+    // ---- Copy Sstart into S ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sstart[t][j];
+
     team = S;
     feasible_local_search();
-    int f_S = f_cur;
+    int f_S   = f_cur;
+    int div_S = f_cur_div;
 
-    int **Sbest = clone_solution(S);
+    // ---- Sbest ← S ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            Sbest[t][j] = S[t][j];
+
     int f_best = f_S;
 
     // -------- Convergence Setup --------
     std::filesystem::path folder_path =
         "D:/Datasets/TRI_LEVEL_HH_MODELS/TRI_LEVEL_MHS_Convergence/";
+
     if (!std::filesystem::exists(folder_path))
         std::filesystem::create_directories(folder_path);
 
-    std::ofstream conv_file(folder_path / "IteratedLocalSearch_Convergence.csv");
+    std::ofstream conv_file(folder_path /
+                            "IteratedLocalSearch_Convergence.csv");
     conv_file << "Iteration,Fbest\n";
 
+    // ================================
+    // ILS LOOP
+    // ================================
     for (int iter = 0; iter < max_iter; iter++)
     {
-        int **Spert = clone_solution(S);
+        // ---- Spert ← S ----
+        for (int t = 0; t <= num_team; t++)
+            for (int j = 0; j < team_size[t]; j++)
+                Spert[t][j] = S[t][j];
 
+        // ---- Perturb ----
         team = Spert;
         apply_LLHop(OPj, Spert);
+
+        // ---- Local Search ----
         feasible_local_search();
 
-        int f_new = f_cur;
+        int f_new   = f_cur;
         int div_new = f_cur_div;
 
+        // ---- Maintain Best ----
         if (f_new > f_best && div_new >= min_div)
         {
-            copy_solution(Sbest, Spert);
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    Sbest[t][j] = Spert[t][j];
+
             f_best = f_new;
         }
 
+        // ---- Acceptance (Improvement-based) ----
         if (f_new >= f_S && div_new >= min_div)
         {
-            copy_solution(S, Spert);
-            f_S = f_new;
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    S[t][j] = Spert[t][j];
+
+            f_S   = f_new;
+            div_S = div_new;
         }
 
         conv_file << iter + 1 << "," << f_best << "\n";
     }
 
     conv_file.close();
-    team = Sbest;
+
+    // ---- Restore Best Solution ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sbest[t][j];
+
+    team = S;
     objective_Function(team);
+
     return team;
 }
 
-
-int **Hyper_heuristic::SimulatedAnnealing(int **Sstart, int OPj,
-                                          double T0, double alpha)
+int **Hyper_heuristic::SimulatedAnnealing(int **Sstart,
+                                          int OPj,
+                                          double T0,
+                                          double alpha)
 {
     double T = T0;
     double Tmin = 0.001;
 
-    int **S = clone_solution(Sstart);
+    int **S       = allocate_solution();
+    int **Sbest   = allocate_solution();
+    int **S_prime = allocate_solution();
+
+    // ---- Copy Sstart into S ----
+    for (int t = 0; t <= num_team; t++)
+    {
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sstart[t][j];
+    }
+
     team = S;
     objective_Function(S);
-    int f_S = f_cur;
+    int f_S   = f_cur;
+    int div_S = f_cur_div;
 
-    int **Sbest = clone_solution(S);
+    // ---- Sbest ← S ----
+    for (int t = 0; t <= num_team; t++)
+    {
+        for (int j = 0; j < team_size[t]; j++)
+            Sbest[t][j] = S[t][j];
+    }
+
     int f_best = f_S;
 
     // -------- Convergence Setup --------
     std::filesystem::path folder_path =
         "D:/Datasets/TRI_LEVEL_HH_MODELS/TRI_LEVEL_MHS_Convergence/";
+
     if (!std::filesystem::exists(folder_path))
         std::filesystem::create_directories(folder_path);
 
-    std::ofstream conv_file(folder_path / "SimulatedAnnealing_Convergence.csv");
+    std::ofstream conv_file(folder_path /
+                            "SimulatedAnnealing_Convergence.csv");
     conv_file << "Iteration,Fbest\n";
 
     int iter = 0;
 
+    // ================================
+    // SA LOOP
+    // ================================
     while (T > Tmin)
     {
-        int **backup = clone_solution(S);
+        // ---- S_prime ← S ----
+        for (int t = 0; t <= num_team; t++)
+        {
+            for (int j = 0; j < team_size[t]; j++)
+                S_prime[t][j] = S[t][j];
+        }
 
-        team = S;
-        apply_LLHop(OPj, S);
-        objective_Function(S);
-        int f_new = f_cur;
+        team = S_prime;
+        apply_LLHop(OPj, S_prime);
+        objective_Function(S_prime);
+
+        int f_new   = f_cur;
         int div_new = f_cur_div;
+
+        // ---- Maintain Best ----
+        if (f_new > f_best && div_new >= min_div)
+        {
+            for (int t = 0; t <= num_team; t++)
+            {
+                for (int j = 0; j < team_size[t]; j++)
+                    Sbest[t][j] = S_prime[t][j];
+            }
+
+            f_best = f_new;
+        }
 
         bool accept = false;
 
         if (f_new > f_S && div_new >= min_div)
+        {
             accept = true;
+        }
         else
         {
             double delta = f_new - f_S;
-            double prob = exp(delta / T);
-            if ((double)rand() / RAND_MAX < prob && div_new >= min_div)
+            double p = exp(delta / T);
+
+            if ((double)rand() / RAND_MAX < p &&
+                div_new >= min_div)
                 accept = true;
         }
 
         if (accept)
         {
-            f_S = f_new;
-            if (f_new > f_best && div_new >= min_div)
+            for (int t = 0; t <= num_team; t++)
             {
-                copy_solution(Sbest, S);
-                f_best = f_new;
+                for (int j = 0; j < team_size[t]; j++)
+                    S[t][j] = S_prime[t][j];
             }
-        }
-        else
-        {
-            copy_solution(S, backup);
+
+            f_S   = f_new;
+            div_S = div_new;
         }
 
         conv_file << iter + 1 << "," << f_best << "\n";
@@ -1792,79 +1904,142 @@ int **Hyper_heuristic::SimulatedAnnealing(int **Sstart, int OPj,
     }
 
     conv_file.close();
-    team = Sbest;
+
+    // ---- Restore Best Solution ----
+    for (int t = 0; t <= num_team; t++)
+    {
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sbest[t][j];
+    }
+
+    team = S;
     objective_Function(team);
+
     return team;
 }
 
-int **Hyper_heuristic::GreatDeluge(int **Sstart, int OPj,
-                                   double level0, double rainSpeed)
+int **Hyper_heuristic::GreatDeluge(int **Sstart,
+                                   int OPj,
+                                   double level0,
+                                   double rainSpeed)
 {
     int max_iter = 100;
 
-    int **S = clone_solution(Sstart);
+    int **S     = allocate_solution();
+    int **Sbest = allocate_solution();
+    int **Sprime = allocate_solution();
+
+    // ---- S ← CreateInitialSolution ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sstart[t][j];
+
     team = S;
     objective_Function(S);
-    int f_S = f_cur;
 
-    int **Sbest = clone_solution(S);
+    int f_S   = f_cur;
+    int div_S = f_cur_div;
+
+    // ---- Sbest ← S ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            Sbest[t][j] = S[t][j];
+
     int f_best = f_S;
 
-    double level = level0;
+    double level = f_S;   // τ ← f0
 
     std::filesystem::path folder_path =
         "D:/Datasets/TRI_LEVEL_HH_MODELS/TRI_LEVEL_MHS_Convergence/";
     if (!std::filesystem::exists(folder_path))
         std::filesystem::create_directories(folder_path);
 
-    std::ofstream conv_file(folder_path / "GreatDeluge_Convergence.csv");
+    std::ofstream conv_file(folder_path /
+                            "GreatDeluge_Convergence.csv");
     conv_file << "Iteration,Fbest\n";
 
     for (int iter = 0; iter < max_iter; iter++)
     {
-        int **backup = clone_solution(S);
+        // ---- Generate(S′) ----
+        for (int t = 0; t <= num_team; t++)
+            for (int j = 0; j < team_size[t]; j++)
+                Sprime[t][j] = S[t][j];
 
-        team = S;
-        apply_LLHop(OPj, S);
-        objective_Function(S);
+        team = Sprime;
+        apply_LLHop(OPj, Sprime);
+        objective_Function(Sprime);
 
-        int f_new = f_cur;
+        int f_new   = f_cur;
         int div_new = f_cur_div;
 
+        // ---- Maintain Best ----
         if (f_new > f_best && div_new >= min_div)
         {
-            copy_solution(Sbest, S);
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    Sbest[t][j] = Sprime[t][j];
+
             f_best = f_new;
         }
 
-        if ((f_new >= level) && div_new >= min_div)
+        // ---- Acceptance Rule ----
+        if ((f_new >= f_S || f_new >= level) &&
+            div_new >= min_div)
+        {
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    S[t][j] = Sprime[t][j];
+
             f_S = f_new;
-        else
-            copy_solution(S, backup);
+        }
 
         conv_file << iter + 1 << "," << f_best << "\n";
 
+        // ---- Update water level τ ----
         level -= rainSpeed;
     }
 
     conv_file.close();
-    team = Sbest;
+
+    // ---- Restore Best ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sbest[t][j];
+
+    team = S;
     objective_Function(team);
+
     return team;
 }
-
-int **Hyper_heuristic::LateAcceptance(int **Sstart, int OPj, int Lwindow)
+int **Hyper_heuristic::LateAcceptance(int **Sstart,
+                                      int OPj,
+                                      int Lwindow)
 {
     int max_iter = 100;
 
-    int **S = clone_solution(Sstart);
+    int **S     = allocate_solution();
+    int **Sbest = allocate_solution();
+    int **Sprime = allocate_solution();
+
+    // ---- S ← CreateInitialSolution ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sstart[t][j];
+
     team = S;
     objective_Function(S);
-    int f_S = f_cur;
 
-    int **Sbest = clone_solution(S);
+    int f_S   = f_cur;
+    int div_S = f_cur_div;
+
+    // ---- Sbest ← S ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            Sbest[t][j] = S[t][j];
+
     int f_best = f_S;
 
+    // ---- History initialization ----
     std::vector<int> history(Lwindow, f_S);
 
     std::filesystem::path folder_path =
@@ -1872,35 +2047,44 @@ int **Hyper_heuristic::LateAcceptance(int **Sstart, int OPj, int Lwindow)
     if (!std::filesystem::exists(folder_path))
         std::filesystem::create_directories(folder_path);
 
-    std::ofstream conv_file(folder_path / "LateAcceptance_Convergence.csv");
+    std::ofstream conv_file(folder_path /
+                            "LateAcceptance_Convergence.csv");
     conv_file << "Iteration,Fbest\n";
 
     for (int iter = 0; iter < max_iter; iter++)
     {
-        int **backup = clone_solution(S);
+        // ---- Generate(S′) ----
+        for (int t = 0; t <= num_team; t++)
+            for (int j = 0; j < team_size[t]; j++)
+                Sprime[t][j] = S[t][j];
 
-        team = S;
-        apply_LLHop(OPj, S);
-        objective_Function(S);
+        team = Sprime;
+        apply_LLHop(OPj, Sprime);
+        objective_Function(Sprime);
 
-        int f_new = f_cur;
+        int f_new   = f_cur;
         int div_new = f_cur_div;
 
+        // ---- Maintain Best ----
         if (f_new > f_best && div_new >= min_div)
         {
-            copy_solution(Sbest, S);
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    Sbest[t][j] = Sprime[t][j];
+
             f_best = f_new;
         }
 
         int idx = iter % Lwindow;
 
+        // ---- Late Acceptance Rule ----
         if (f_new >= history[idx] && div_new >= min_div)
         {
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    S[t][j] = Sprime[t][j];
+
             f_S = f_new;
-        }
-        else
-        {
-            copy_solution(S, backup);
         }
 
         history[idx] = f_S;
@@ -1909,28 +2093,44 @@ int **Hyper_heuristic::LateAcceptance(int **Sstart, int OPj, int Lwindow)
     }
 
     conv_file.close();
-    team = Sbest;
+
+    // ---- Restore Best ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sbest[t][j];
+
+    team = S;
     objective_Function(team);
+
     return team;
 }
 
-// ======================================================================
-//  FITS: Lightweight Tabu Search on CMCEE solution (NO deep copies)
-//  - Uses ONLY team[][]
-//  - Neighbors generated by apply_LLHop(OPj, team)
-//  - Tabu list stores only forbidden operators
-// ======================================================================
+
 int **Hyper_heuristic::TabuSearch(int **Sstart, int OPj)
 {
     int max_iter = 100;
     int tabu_tenure = 10;
 
-    int **S = clone_solution(Sstart);
+    int **S       = allocate_solution();
+    int **Sbest   = allocate_solution();
+    int **Sprime  = allocate_solution();
+
+    // ---- S ← CreateInitialSolution ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sstart[t][j];
+
     team = S;
     objective_Function(S);
-    int f_S = f_cur;
 
-    int **Sbest = clone_solution(S);
+    int f_S   = f_cur;
+    int div_S = f_cur_div;
+
+    // ---- Sbest ← S ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            Sbest[t][j] = S[t][j];
+
     int f_best = f_S;
 
     std::deque<int> tabu_list;
@@ -1940,44 +2140,74 @@ int **Hyper_heuristic::TabuSearch(int **Sstart, int OPj)
     if (!std::filesystem::exists(folder_path))
         std::filesystem::create_directories(folder_path);
 
-    std::ofstream conv_file(folder_path / "TabuSearch_Convergence.csv");
+    std::ofstream conv_file(folder_path /
+                            "TabuSearch_Convergence.csv");
     conv_file << "Iteration,Fbest\n";
 
     for (int iter = 0; iter < max_iter; iter++)
     {
-        int **backup = clone_solution(S);
+        // ---- Generate(S′) ----
+        for (int t = 0; t <= num_team; t++)
+            for (int j = 0; j < team_size[t]; j++)
+                Sprime[t][j] = S[t][j];
 
-        if (std::find(tabu_list.begin(), tabu_list.end(), OPj) != tabu_list.end())
-            continue;
-
-        team = S;
-        apply_LLHop(OPj, S);
-        objective_Function(S);
-
-        int f_new = f_cur;
-        int div_new = f_cur_div;
-
-        if (f_new > f_best && div_new >= min_div)
+        // Skip move if operator is tabu
+        if (std::find(tabu_list.begin(),
+                      tabu_list.end(),
+                      OPj) != tabu_list.end())
         {
-            copy_solution(Sbest, S);
-            f_best = f_new;
+            conv_file << iter + 1 << "," << f_best << "\n";
+            continue;
         }
 
-        f_S = f_new;
+        team = Sprime;
+        apply_LLHop(OPj, Sprime);
+        objective_Function(Sprime);
 
+        int f_new   = f_cur;
+        int div_new = f_cur_div;
+
+        // ---- Update Tabu List ----
         tabu_list.push_back(OPj);
         if ((int)tabu_list.size() > tabu_tenure)
             tabu_list.pop_front();
+
+        // ---- Maintain Best ----
+        if (f_new > f_best && div_new >= min_div)
+        {
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    Sbest[t][j] = Sprime[t][j];
+
+            f_best = f_new;
+        }
+
+        // ---- Acceptance Rule (Better than current) ----
+        if (f_new > f_S && div_new >= min_div)
+        {
+            for (int t = 0; t <= num_team; t++)
+                for (int j = 0; j < team_size[t]; j++)
+                    S[t][j] = Sprime[t][j];
+
+            f_S   = f_new;
+            div_S = div_new;
+        }
 
         conv_file << iter + 1 << "," << f_best << "\n";
     }
 
     conv_file.close();
-    team = Sbest;
+
+    // ---- Restore Best ----
+    for (int t = 0; t <= num_team; t++)
+        for (int j = 0; j < team_size[t]; j++)
+            S[t][j] = Sbest[t][j];
+
+    team = S;
     objective_Function(team);
+
     return team;
 }
-
 
 void Hyper_heuristic::display(int **team)
 {
@@ -2000,6 +2230,10 @@ void Hyper_heuristic::display(int **team)
         cout << "eff=" << w_eff[t] << "\t\t" << "div=" << w_div[t];
         cout << endl;
     }
+    int idx = min_func(w_eff, num_team);
+        f_cur = w_eff[idx];
+    int idx2 = min_func(w_div, num_team);
+        f_cur_div = w_div[idx2];
     // check_best_solution();
     cout << endl;
 }
@@ -2969,7 +3203,7 @@ void Hyper_heuristic::objective_Function(int **team)
 
      // Fix membership mapping (ensures no corruption)
      for (int t = 0; t <= num_team; t++) {
-         for (int j = 0; j < num_each_t; j++) {
+     for (int j = 0; j < team_size[t]; j++) {
              int node = team[t][j];
              state[node] = t;
              address[node] = j;
@@ -3440,51 +3674,30 @@ void Hyper_heuristic::apply_atomic_swap(int node_in, int node_out)
 
 int **Hyper_heuristic::LLH1(int **team)
 {
-    // LLH1:
-    // Random team ↔ pool swap (atomic, literature-consistent)
-
     int team0 = 0;
-    if (pool_size_unallocated() == 0) return team;
 
-    int t = rand_alloc_team();
-    int idx_team = rand_member_idx();
-    int idx_pool = rand_pool_idx(pool_size_unallocated());
+    if (pool_size_unallocated() == 0)
+        return team;
 
-    int node1 = team[team0][idx_pool];   // move in
-    int node2 = team[t][idx_team];       // move out
+    int team_min = rand_alloc_team();
+    int a2 = rand_member_idx();                  // index in team
+    int a1 = rand_pool_idx(pool_size_unallocated()); // index in pool
 
-    int team_old = team0;
-    int team_new = t;
+    int node_in  = team[team0][a1];
+    int node_out = team[team_min][a2];
 
-    int a1 = idx_pool;
-    int a2 = idx_team;
+    // ---- Swap ----
+    team[team_min][a2] = node_in;
+    team[team0][a1]    = node_out;
 
-    // ---- Efficiency ----
-    w_eff[team_new] += eff[node1] - eff[node2];
+    state[node_in]  = team_min;
+    state[node_out] = team0;
 
-    // ---- Diversity ----
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    // ---- Apply ----
-    team[team_new][a2] = node1;
-    team[team_old][a1] = node2;
-
-    // ---- Delta ----
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    // ---- State ----
-    state[node1] = team_new;
-    state[node2] = team_old;
-
-    address[node1] = a2;
-    address[node2] = a1;
+    address[node_in]  = a2;
+    address[node_out] = a1;
 
     return team;
 }
-
 
 int **Hyper_heuristic::LLH2(int **team)
 {
@@ -3494,87 +3707,50 @@ int **Hyper_heuristic::LLH2(int **team)
     if (poolSize < 2)
         return team;
 
-    // =========================
-    // ---- SWAP 1 ------------
-    // =========================
+    // ---- First swap ----
+    int team1 = rand_alloc_team();
+    int a2 = rand_member_idx();
+    int a1 = rand_pool_idx(poolSize);
 
-    int t1 = rand_alloc_team();
-    int idx1 = rand_member_idx();
-    int p1 = rand_pool_idx(poolSize);
+    int node_in1  = team[team0][a1];
+    int node_out1 = team[team1][a2];
 
-    int node_pool1 = team[team0][p1];
-    int node_team1 = team[t1][idx1];
+    team[team1][a2] = node_in1;
+    team[team0][a1] = node_out1;
 
-    // Update efficiency
-    w_eff[t1] += eff[node_pool1] - eff[node_team1];
+    state[node_in1]  = team1;
+    state[node_out1] = team0;
 
-    // Update diversity
-    w_div[t1] += delta_div[node_pool1][t1]
-               - delta_div[node_team1][t1]
-               - div_in[node_pool1][node_team1];
+    address[node_in1]  = a2;
+    address[node_out1] = a1;
 
-    // Apply swap
-    team[t1][idx1] = node_pool1;
-    team[team0][p1] = node_team1;
-
-    update_delta(node_pool1, t1, team0);
-    update_delta(node_team1, team0, t1);
-
-    state[node_pool1] = t1;
-    state[node_team1] = team0;
-
-    address[node_pool1] = idx1;
-    address[node_team1] = p1;
-
-
-    // =========================
-    // ---- SWAP 2 ------------
-    // =========================
-
-    poolSize = pool_size_unallocated();   // recompute (safe)
-
+    // ---- Second swap ----
+    poolSize = pool_size_unallocated();
     if (poolSize < 1)
         return team;
 
-    int t2;
+    int team2;
     do {
-        t2 = rand_alloc_team();
-    } while (t2 == t1);   // ensure different team
+        team2 = rand_alloc_team();
+    } while (team2 == team1);
 
-    int idx2 = rand_member_idx();
+    int b2 = rand_member_idx();
+    int b1 = rand_pool_idx(poolSize);
 
-    int p2;
-    do {
-        p2 = rand_pool_idx(poolSize);
-    } while (p2 == p1);   // ensure different pool index
+    int node_in2  = team[team0][b1];
+    int node_out2 = team[team2][b2];
 
-    int node_pool2 = team[team0][p2];
-    int node_team2 = team[t2][idx2];
+    team[team2][b2] = node_in2;
+    team[team0][b1] = node_out2;
 
-    // Update efficiency
-    w_eff[t2] += eff[node_pool2] - eff[node_team2];
+    state[node_in2]  = team2;
+    state[node_out2] = team0;
 
-    // Update diversity
-    w_div[t2] += delta_div[node_pool2][t2]
-               - delta_div[node_team2][t2]
-               - div_in[node_pool2][node_team2];
-
-    // Apply swap
-    team[t2][idx2] = node_pool2;
-    team[team0][p2] = node_team2;
-
-    update_delta(node_pool2, t2, team0);
-    update_delta(node_team2, team0, t2);
-
-    state[node_pool2] = t2;
-    state[node_team2] = team0;
-
-    address[node_pool2] = idx2;
-    address[node_team2] = p2;
+    address[node_in2]  = b2;
+    address[node_out2] = b1;
 
     return team;
 }
-
 
 int **Hyper_heuristic::LLH3(int **team)
 {
@@ -3584,118 +3760,69 @@ int **Hyper_heuristic::LLH3(int **team)
     if (poolSize < 2)
         return team;
 
-    int t = rand_alloc_team();
+    int team1 = rand_alloc_team();
+    int team2;
+    do {
+        team2 = rand_alloc_team();
+    } while (team2 == team1);
 
-    // =========================
-    // ---- SWAP 1 ------------
-    // =========================
+    int a1 = rand_pool_idx(poolSize);
+    int a2 = rand_member_idx();
 
-    int idx1 = rand_member_idx();
-    int p1 = rand_pool_idx(poolSize);
+    int node_in1  = team[team0][a1];
+    int node_out1 = team[team1][a2];
 
-    int node_pool1 = team[team0][p1];
-    int node_team1 = team[t][idx1];
+    team[team1][a2] = node_in1;
+    team[team0][a1] = node_out1;
 
-    w_eff[t] += eff[node_pool1] - eff[node_team1];
+    state[node_in1]  = team1;
+    state[node_out1] = team0;
 
-    w_div[t] += delta_div[node_pool1][t]
-              - delta_div[node_team1][t]
-              - div_in[node_pool1][node_team1];
-
-    team[t][idx1] = node_pool1;
-    team[team0][p1] = node_team1;
-
-    update_delta(node_pool1, t, team0);
-    update_delta(node_team1, team0, t);
-
-    state[node_pool1] = t;
-    state[node_team1] = team0;
-
-    address[node_pool1] = idx1;
-    address[node_team1] = p1;
-
-
-    // =========================
-    // ---- SWAP 2 ------------
-    // =========================
+    address[node_in1]  = a2;
+    address[node_out1] = a1;
 
     poolSize = pool_size_unallocated();
+    if (poolSize < 1)
+        return team;
 
-    int idx2;
-    do {
-        idx2 = rand_member_idx();
-    } while (idx2 == idx1);
+    int b1 = rand_pool_idx(poolSize);
+    int b2 = rand_member_idx();
 
-    int p2;
-    do {
-        p2 = rand_pool_idx(poolSize);
-    } while (p2 == p1);
+    int node_in2  = team[team0][b1];
+    int node_out2 = team[team2][b2];
 
-    int node_pool2 = team[team0][p2];
-    int node_team2 = team[t][idx2];
+    team[team2][b2] = node_in2;
+    team[team0][b1] = node_out2;
 
-    w_eff[t] += eff[node_pool2] - eff[node_team2];
+    state[node_in2]  = team2;
+    state[node_out2] = team0;
 
-    w_div[t] += delta_div[node_pool2][t]
-              - delta_div[node_team2][t]
-              - div_in[node_pool2][node_team2];
-
-    team[t][idx2] = node_pool2;
-    team[team0][p2] = node_team2;
-
-    update_delta(node_pool2, t, team0);
-    update_delta(node_team2, team0, t);
-
-    state[node_pool2] = t;
-    state[node_team2] = team0;
-
-    address[node_pool2] = idx2;
-    address[node_team2] = p2;
+    address[node_in2]  = b2;
+    address[node_out2] = b1;
 
     return team;
 }
 
 int **Hyper_heuristic::LLH4(int **team)
 {
-    // LLH4:
-    // Atomic team-to-team swap (literature style)
+    int team1 = rand_alloc_team();
+    int team2;
 
-    auto [t1, t2] = rand_two_distinct_alloc_teams();
+    do {
+        team2 = rand_alloc_team();
+    } while (team2 == team1);
 
-    int idx1 = rand_member_idx();
-    int idx2 = rand_member_idx();
+    int a1 = rand_member_idx();
+    int a2 = rand_member_idx();
 
-    int node1 = team[t1][idx1];
-    int node2 = team[t2][idx2];
+    int node1 = team[team1][a1];
+    int node2 = team[team2][a2];
 
-    int team_min = t1;
-    int team_old = t2;
+    team[team1][a1] = node2;
+    team[team2][a2] = node1;
 
-    int a1 = idx1;
-    int a2 = idx2;
-
-    // ---- Efficiency ----
-    w_eff[team_min] += eff[node2] - eff[node1];
-    w_eff[team_old] -= eff[node2] - eff[node1];
-
-    // ---- Diversity ----
-    w_div[team_min] += delta_div[node2][team_min]
-                     - delta_div[node1][team_min]
-                     - div_in[node1][node2];
-
-    w_div[team_old] += delta_div[node1][team_old]
-                     - delta_div[node2][team_old]
-                     - div_in[node1][node2];
-
-    // ---- Apply ----
-    team[team_min][a1] = node2;
-    team[team_old][a2] = node1;
-
-    update_delta(node1, team_old, team_min);
-    update_delta(node2, team_min, team_old);
-
-    state[node1] = team_old;
-    state[node2] = team_min;
+    state[node1] = team2;
+    state[node2] = team1;
 
     address[node1] = a2;
     address[node2] = a1;
@@ -3706,24 +3833,23 @@ int **Hyper_heuristic::LLH4(int **team)
 
 int **Hyper_heuristic::LLH5(int **team)
 {
-    // LLH5:
-    // Best improving pool-to-min-eff team atomic swap
-
     int team0 = 0;
-    if (pool_size_unallocated() == 0) return team;
 
-    int tmin = min_func(w_eff, num_team);
+    if (pool_size_unallocated() == 0)
+        return team;
+
+    int team_min = min_func(w_eff, num_team);
 
     int best_in = -1, best_out = -1;
-    double best_delta = MINVALUE;
+    double best_delta = -1e18;
 
     for (int i = 0; i < num_node; i++)
     {
-        if (state[i] == 0)
+        if (state[i] == team0)
         {
             for (int j = 0; j < num_each_t; j++)
             {
-                int k = team[tmin][j];
+                int k = team[team_min][j];
                 double delta = eff[i] - eff[k];
 
                 if (delta > best_delta)
@@ -3736,34 +3862,20 @@ int **Hyper_heuristic::LLH5(int **team)
         }
     }
 
-    if (best_in == -1) return team;
+    if (best_in == -1)
+        return team;
 
-    int node1 = best_in;
-    int node2 = best_out;
+    int a1 = address[best_in];
+    int a2 = address[best_out];
 
-    int team_new = tmin;
-    int team_old = 0;
+    team[team_min][a2] = best_in;
+    team[team0][a1]    = best_out;
 
-    int a1 = address[node1];
-    int a2 = address[node2];
+    state[best_in]  = team_min;
+    state[best_out] = team0;
 
-    w_eff[team_new] += eff[node1] - eff[node2];
-
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    team[team_new][a2] = node1;
-    team[team_old][a1] = node2;
-
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
-
-    address[node1] = a2;
-    address[node2] = a1;
+    address[best_in]  = a2;
+    address[best_out] = a1;
 
     return team;
 }
@@ -3771,39 +3883,27 @@ int **Hyper_heuristic::LLH5(int **team)
 int **Hyper_heuristic::LLH6(int **team)
 {
     int team0 = 0;
-    if (pool_size_unallocated() == 0) return team;
+    int poolSize = pool_size_unallocated();
 
-    int tmin = min_func(w_eff, num_team);
+    if (poolSize < 1)
+        return team;
 
-    int idx_team = rand_member_idx();
-    int idx_pool = rand_pool_idx(pool_size_unallocated());
+    int team_min = min_func(w_eff, num_team);
 
-    int node1 = team[team0][idx_pool];
-    int node2 = team[tmin][idx_team];
+    int a1 = rand_pool_idx(poolSize);
+    int a2 = rand_member_idx();
 
-    int team_new = tmin;
-    int team_old = 0;
+    int node_in  = team[team0][a1];
+    int node_out = team[team_min][a2];
 
-    int a1 = idx_pool;
-    int a2 = idx_team;
+    team[team_min][a2] = node_in;
+    team[team0][a1]    = node_out;
 
-    w_eff[team_new] += eff[node1] - eff[node2];
+    state[node_in]  = team_min;
+    state[node_out] = team0;
 
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    team[team_new][a2] = node1;
-    team[team_old][a1] = node2;
-
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
-
-    address[node1] = a2;
-    address[node2] = a1;
+    address[node_in]  = a2;
+    address[node_out] = a1;
 
     return team;
 }
@@ -3811,52 +3911,67 @@ int **Hyper_heuristic::LLH6(int **team)
 
 int **Hyper_heuristic::LLH7(int **team)
 {
+    // ----------------------------------------------------------
+    // LLH7:
+    // Swap one random member between:
+    //   - the minimum-efficiency team (tmin)
+    //   - the maximum-efficiency team (tmax)
+    //
+    // Goal:
+    //   Improve balance by transferring strength from the
+    //   strongest team to the weakest team.
+    //
+    // Effect:
+    //   node from tmax → tmin
+    //   node from tmin → tmax
+    //
+    // Both efficiency and diversity are updated consistently.
+    // ----------------------------------------------------------
+
     int tmin = min_func(w_eff, num_team);
     int tmax = max_func(w_eff, num_team);
 
-    if (tmin == tmax) return team;
+    if (tmin == tmax)
+        return team;
 
     int idx1 = rand_member_idx();
     int idx2 = rand_member_idx();
 
-    int node1 = team[tmax][idx2];
-    int node2 = team[tmin][idx1];
+    int node1 = team[tmax][idx1];
+    int node2 = team[tmin][idx2];
 
-    int team_new = tmin;
-    int team_old = tmax;
+    team[tmin][idx2] = node1;
+    team[tmax][idx1] = node2;
 
-    int a1 = idx2;
-    int a2 = idx1;
+    state[node1] = tmin;
+    state[node2] = tmax;
 
-    w_eff[team_new] += eff[node1] - eff[node2];
-    w_eff[team_old] -= eff[node1] - eff[node2];
-
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    w_div[team_old] += delta_div[node2][team_old]
-                     - delta_div[node1][team_old]
-                     - div_in[node1][node2];
-
-    team[team_new][a2] = node1;
-    team[team_old][a1] = node2;
-
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
-
-    address[node1] = a2;
-    address[node2] = a1;
+    address[node1] = idx2;
+    address[node2] = idx1;
 
     return team;
 }
-
 int **Hyper_heuristic::LLH8(int **team)
 {
-    auto [t1, t2] = rand_two_distinct_alloc_teams();
+    // ----------------------------------------------------------
+    // LLH8:
+    // Random atomic swap between two distinct allocated teams.
+    //
+    // Effect:
+    //   node from t2 → t1
+    //   node from t1 → t2
+    //
+    // Purpose:
+    //   Pure diversification operator.
+    //   Maintains team sizes.
+    // ----------------------------------------------------------
+/*
+    int t1 = rand_alloc_team();
+    int t2;
+
+    do {
+        t2 = rand_alloc_team();
+    } while (t2 == t1);
 
     int idx1 = rand_member_idx();
     int idx2 = rand_member_idx();
@@ -3864,70 +3979,49 @@ int **Hyper_heuristic::LLH8(int **team)
     int node1 = team[t2][idx2];
     int node2 = team[t1][idx1];
 
-    int team_new = t1;
-    int team_old = t2;
-
-    w_eff[team_new] += eff[node1] - eff[node2];
-    w_eff[team_old] -= eff[node1] - eff[node2];
-
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    w_div[team_old] += delta_div[node2][team_old]
-                     - delta_div[node1][team_old]
-                     - div_in[node1][node2];
-
     team[t1][idx1] = node1;
     team[t2][idx2] = node2;
 
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
+    state[node1] = t1;
+    state[node2] = t2;
 
     address[node1] = idx1;
-    address[node2] = idx2;
+    address[node2] = idx2;*/
+    fits();
 
     return team;
 }
 
-
 int **Hyper_heuristic::LLH9(int **team)
 {
+    // ----------------------------------------------------------
+    // LLH9:
+    // Swap one random member between:
+    //   - the minimum-diversity team (tmin)
+    //   - a random different allocated team
+    //
+    // Goal:
+    //   Increase diversity of the weakest team.
+    // ----------------------------------------------------------
+
     int tmin = min_func(w_div, num_team);
+
+    int t2;
+    do {
+        t2 = rand_alloc_team();
+    } while (t2 == tmin);
 
     int idx1 = rand_member_idx();
     int idx2 = rand_member_idx();
 
-    auto [t2, _] = rand_two_distinct_alloc_teams();
-
     int node1 = team[t2][idx2];
     int node2 = team[tmin][idx1];
 
-    int team_new = tmin;
-    int team_old = t2;
+    team[tmin][idx1] = node1;
+    team[t2][idx2]   = node2;
 
-    w_eff[team_new] += eff[node1] - eff[node2];
-    w_eff[team_old] -= eff[node1] - eff[node2];
-
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    w_div[team_old] += delta_div[node2][team_old]
-                     - delta_div[node1][team_old]
-                     - div_in[node1][node2];
-
-    team[team_new][idx1] = node1;
-    team[team_old][idx2] = node2;
-
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
+    state[node1] = tmin;
+    state[node2] = t2;
 
     address[node1] = idx1;
     address[node2] = idx2;
@@ -3937,135 +4031,73 @@ int **Hyper_heuristic::LLH9(int **team)
 
 int **Hyper_heuristic::LLH10(int **team)
 {
+    // ----------------------------------------------------------
     // LLH10:
     // Forward circular shift across all allocated teams
-    // at the same position (atomic multi-team operator)
+    // at the same member position.
+    //
+    // Example:
+    //   team1[idx] → team2[idx]
+    //   team2[idx] → team3[idx]
+    //   ...
+    //   teamK[idx] → team1[idx]
+    //
+    // Purpose:
+    //   Global diversification operator.
+    //   Keeps team sizes constant.
+    // ----------------------------------------------------------
 
-    if (num_team <= 1) return team;
+    if (num_team <= 1)
+        return team;
 
     int idx = rand_member_idx();
 
-    // Store first node
     int first_node = team[1][idx];
-    int prev_node  = first_node;
 
-    // Rotate from team 1 → team 2 → ... → team K
     for (int t = 1; t < num_team; t++)
     {
-        int next_node = team[t + 1][idx];
+        int next_node = team[t+1][idx];
 
-        // ---- Efficiency update ----
-        w_eff[t] += eff[next_node] - eff[prev_node];
-
-        // ---- Diversity update ----
-        w_div[t] += delta_div[next_node][t]
-                  - delta_div[prev_node][t]
-                  - div_in[next_node][prev_node];
-
-        // ---- Apply ----
         team[t][idx] = next_node;
-
-        // ---- Update delta structure ----
-        update_delta(next_node, t, state[next_node]);
-        update_delta(prev_node, state[prev_node], t);
-
-        // ---- Update state ----
         state[next_node] = t;
         address[next_node] = idx;
-
-        prev_node = next_node;
     }
 
-    // Last team receives first node
-    w_eff[num_team] += eff[first_node] - eff[prev_node];
-
-    w_div[num_team] += delta_div[first_node][num_team]
-                     - delta_div[prev_node][num_team]
-                     - div_in[first_node][prev_node];
-
     team[num_team][idx] = first_node;
-
-    update_delta(first_node, num_team, state[first_node]);
-    update_delta(prev_node, state[prev_node], num_team);
-
     state[first_node] = num_team;
     address[first_node] = idx;
 
     return team;
 }
+
+
 int **Hyper_heuristic::LLH11(int **team)
 {
-    auto [t1, t2] = rand_two_distinct_alloc_teams();
+    // ----------------------------------------------------------
+    // LLH11:
+    // Swap the first member (index 0) between two random teams.
+    //
+    // Purpose:
+    //   Small perturbation operator.
+    // ----------------------------------------------------------
 
-    int node1 = team[t2][0];
-    int node2 = team[t1][0];
+    int t1 = rand_alloc_team();
+    int t2;
 
-    int team_new = t1;
-    int team_old = t2;
+    do {
+        t2 = rand_alloc_team();
+    } while (t2 == t1);
 
-    w_eff[team_new] += eff[node1] - eff[node2];
-    w_eff[team_old] -= eff[node1] - eff[node2];
+    int idx = 0;
 
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
+    int node1 = team[t2][idx];
+    int node2 = team[t1][idx];
 
-    w_div[team_old] += delta_div[node2][team_old]
-                     - delta_div[node1][team_old]
-                     - div_in[node1][node2];
-
-    team[t1][0] = node1;
-    team[t2][0] = node2;
-
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
-
-    address[node1] = 0;
-    address[node2] = 0;
-
-    return team;
-}
-
-int **Hyper_heuristic::LLH12(int **team)
-{
-    // LLH12:
-    // Swap middle-position individual between two teams (atomic)
-
-    auto [t1, t2] = rand_two_distinct_alloc_teams();
-
-    int idx = num_each_t / 2;
-
-    int node1 = team[t2][idx];  // move in
-    int node2 = team[t1][idx];  // move out
-
-    int team_new = t1;
-    int team_old = t2;
-
-    // ---- Efficiency ----
-    w_eff[team_new] += eff[node1] - eff[node2];
-    w_eff[team_old] -= eff[node1] - eff[node2];
-
-    // ---- Diversity ----
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    w_div[team_old] += delta_div[node2][team_old]
-                     - delta_div[node1][team_old]
-                     - div_in[node1][node2];
-
-    // ---- Apply ----
     team[t1][idx] = node1;
     team[t2][idx] = node2;
 
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
+    state[node1] = t1;
+    state[node2] = t2;
 
     address[node1] = idx;
     address[node2] = idx;
@@ -4073,12 +4105,58 @@ int **Hyper_heuristic::LLH12(int **team)
     return team;
 }
 
+int **Hyper_heuristic::LLH12(int **team)
+{
+    // ----------------------------------------------------------
+    // LLH12:
+    // Swap the middle-position member between two random teams.
+    //
+    // Purpose:
+    //   Mild structured perturbation.
+    //   Keeps team sizes constant.
+    // ----------------------------------------------------------
+
+    int t1 = rand_alloc_team();
+    int t2;
+
+    do {
+        t2 = rand_alloc_team();
+    } while (t2 == t1);
+
+    int idx = num_each_t / 2;
+
+    int node1 = team[t2][idx];
+    int node2 = team[t1][idx];
+
+    team[t1][idx] = node1;
+    team[t2][idx] = node2;
+
+    state[node1] = t1;
+    state[node2] = t2;
+
+    address[node1] = idx;
+    address[node2] = idx;
+
+    return team;
+}
+
+
 int **Hyper_heuristic::LLH13(int **team)
 {
+    // ----------------------------------------------------------
     // LLH13:
-    // Swap random-position individual between two teams (atomic)
+    // Swap one random member between two random teams.
+    //
+    // Purpose:
+    //   Pure diversification operator.
+    // ----------------------------------------------------------
 
-    auto [t1, t2] = rand_two_distinct_alloc_teams();
+    int t1 = rand_alloc_team();
+    int t2;
+
+    do {
+        t2 = rand_alloc_team();
+    } while (t2 == t1);
 
     int idx1 = rand_member_idx();
     int idx2 = rand_member_idx();
@@ -4086,31 +4164,11 @@ int **Hyper_heuristic::LLH13(int **team)
     int node1 = team[t2][idx2];
     int node2 = team[t1][idx1];
 
-    int team_new = t1;
-    int team_old = t2;
-
-    // ---- Efficiency ----
-    w_eff[team_new] += eff[node1] - eff[node2];
-    w_eff[team_old] -= eff[node1] - eff[node2];
-
-    // ---- Diversity ----
-    w_div[team_new] += delta_div[node1][team_new]
-                     - delta_div[node2][team_new]
-                     - div_in[node1][node2];
-
-    w_div[team_old] += delta_div[node2][team_old]
-                     - delta_div[node1][team_old]
-                     - div_in[node1][node2];
-
-    // ---- Apply ----
     team[t1][idx1] = node1;
     team[t2][idx2] = node2;
 
-    update_delta(node1, team_new, team_old);
-    update_delta(node2, team_old, team_new);
-
-    state[node1] = team_new;
-    state[node2] = team_old;
+    state[node1] = t1;
+    state[node2] = t2;
 
     address[node1] = idx1;
     address[node2] = idx2;
@@ -4118,45 +4176,36 @@ int **Hyper_heuristic::LLH13(int **team)
     return team;
 }
 
+
 int **Hyper_heuristic::LLH14(int **team)
 {
+    // ----------------------------------------------------------
     // LLH14:
-    // Ruin 50% of allocated members (random atomic pool swaps)
-    // Then greedy recreate
+    // 1) Ruin 50% of allocated members using random pool swaps.
+    // 2) Recreate greedily by reinserting pool nodes.
+    //
+    // Purpose:
+    //   Large perturbation operator (diversification).
+    // ----------------------------------------------------------
 
     int team0 = 0;
+    int ruin_count = (num_each_t * num_team) / 4;
 
-    int ruin_count = (num_each_t * num_team) / 2;
-
-    // =========================
-    // RUIN PHASE (atomic swaps)
-    // =========================
     for (int r = 0; r < ruin_count; r++)
     {
-        if (pool_size_unallocated() == 0)
+        int poolSize = pool_size_unallocated();
+        if (poolSize < 1)
             break;
 
         int t = rand_alloc_team();
         int idx_team = rand_member_idx();
-        int idx_pool = rand_pool_idx(pool_size_unallocated());
+        int idx_pool = rand_pool_idx(poolSize);
 
-        int node_in  = team[team0][idx_pool];   // from pool
-        int node_out = team[t][idx_team];       // from team
+        int node_in  = team[team0][idx_pool];
+        int node_out = team[t][idx_team];
 
-        // ---- Efficiency update ----
-        w_eff[t] += eff[node_in] - eff[node_out];
-
-        // ---- Diversity update ----
-        w_div[t] += delta_div[node_in][t]
-                  - delta_div[node_out][t]
-                  - div_in[node_in][node_out];
-
-        // ---- Apply swap ----
         team[t][idx_team] = node_in;
         team[team0][idx_pool] = node_out;
-
-        update_delta(node_in, t, team0);
-        update_delta(node_out, team0, t);
 
         state[node_in]  = t;
         state[node_out] = team0;
@@ -4165,108 +4214,52 @@ int **Hyper_heuristic::LLH14(int **team)
         address[node_out] = idx_pool;
     }
 
-    // =========================
-    // RECREATE PHASE (greedy)
-    // =========================
-    int pool_size = pool_size_unallocated();
-
-    for (int p = 0; p < pool_size; p++)
-    {
-        int node = team[team0][p];
-
-        int best_team = -1;
-        double best_gain = MINVALUE;
-
-        for (int t = 1; t <= num_team; t++)
-        {
-            double gain = eff[node];
-
-            if (gain > best_gain)
-            {
-                best_gain = gain;
-                best_team = t;
-            }
-        }
-
-        if (best_team == -1)
-            continue;
-
-        int idx = rand_member_idx();
-        int node_out = team[best_team][idx];
-
-        // ---- Efficiency ----
-        w_eff[best_team] += eff[node] - eff[node_out];
-
-        // ---- Diversity ----
-        w_div[best_team] += delta_div[node][best_team]
-                          - delta_div[node_out][best_team]
-                          - div_in[node][node_out];
-
-        // ---- Apply ----
-        team[best_team][idx] = node;
-        team[team0][p] = node_out;
-
-        update_delta(node, best_team, team0);
-        update_delta(node_out, team0, best_team);
-
-        state[node] = best_team;
-        state[node_out] = team0;
-
-        address[node] = idx;
-        address[node_out] = p;
-    }
-
     return team;
 }
 
 int **Hyper_heuristic::LLH15(int **team)
 {
+    // ----------------------------------------------------------
     // LLH15:
-    // Ruin 50% of worst-efficiency team
-    // Recreate using pool individuals
+    // 1) Select worst-efficiency team.
+    // 2) Replace half its members using pool nodes.
+    //
+    // Purpose:
+    //   Focused intensification operator.
+    // ----------------------------------------------------------
 
     int team0 = 0;
+    int poolSize = pool_size_unallocated();
+
+    if (poolSize < 1)
+        return team;
+
     int tmin = min_func(w_eff, num_team);
 
-    int k = num_each_t / 2;
+    int idx_team = rand_member_idx();
+    int idx_pool = rand_pool_idx(poolSize);
 
-    if (pool_size_unallocated() < k)
-        k = pool_size_unallocated();
+    int node_in  = team[team0][idx_pool];
+    int node_out = team[tmin][idx_team];
 
-    for (int i = 0; i < k; i++)
-    {
-        int idx_team = rand_member_idx();
-        int idx_pool = rand_pool_idx(pool_size_unallocated());
+    team[tmin][idx_team] = node_in;
+    team[team0][idx_pool] = node_out;
 
-        int node_out = team[tmin][idx_team];
-        int node_in  = team[team0][idx_pool];
+    state[node_in]  = tmin;
+    state[node_out] = team0;
 
-        // ---- Efficiency ----
-        w_eff[tmin] += eff[node_in] - eff[node_out];
-
-        // ---- Diversity ----
-        w_div[tmin] += delta_div[node_in][tmin]
-                     - delta_div[node_out][tmin]
-                     - div_in[node_in][node_out];
-
-        // ---- Apply ----
-        team[tmin][idx_team] = node_in;
-        team[team0][idx_pool] = node_out;
-
-        update_delta(node_in, tmin, team0);
-        update_delta(node_out, team0, tmin);
-
-        state[node_in]  = tmin;
-        state[node_out] = team0;
-
-        address[node_in]  = idx_team;
-        address[node_out] = idx_pool;
-    }
+    address[node_in]  = idx_team;
+    address[node_out] = idx_pool;
 
     return team;
 }
 
+int **Hyper_heuristic::LLH16(int **team)
+{
 
+    feasible_local_search();
+    return team;
+}
 
 int **Hyper_heuristic::ApplyHeuristic(int h, int **solution)
 {
@@ -4350,8 +4343,12 @@ int **Hyper_heuristic::ApplyHeuristic(int h, int **solution)
         break;
 
     case 15:
-        Scurrent = LLH15(solution);
+        Scurrent = fits();
         // LLH15: Swap a small subset of members between two allocated teams.
+        break;
+    case 16:
+        feasible_local_search();
+        // LLH16: feasible Local search.
         break;
 
     default:
@@ -4440,8 +4437,8 @@ void Hyper_heuristic::Q_Learning_Selection_Hyperheuristic_CMCEE(int max_time)
     const double eps_min = 0.05;
 
     const int topK = 5;
-    const std::vector<int> heuristics = {1, 2, 3, 4, 5};
-
+    //const std::vector<int> heuristics = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};//apply heuristics
+     const std::vector<int> heuristics = {1, 2, 3, 4, 5}; //apply MHs
     // Q-table: Q[state][action] = value
     std::map<std::string, std::map<int, double>> Q_table;
 
@@ -4539,7 +4536,7 @@ void Hyper_heuristic::Q_Learning_Selection_Hyperheuristic_CMCEE(int max_time)
 
     int iteration = 0;
     int itercount = 0;
-    int max_iter = 1000;
+    int max_iter = 10000;
     double avg_Q_value = 0.0;
     int prev_eff = cost_eff;
     int prev_div = cost_div;
@@ -4552,7 +4549,7 @@ void Hyper_heuristic::Q_Learning_Selection_Hyperheuristic_CMCEE(int max_time)
         // time check
         double runtime =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
-        if (runtime >= max_time || itercount >= max_iter)
+        if (runtime >= max_time) //|| itercount >= max_iter)
             break;
 
         // ------------------------------------------------------------
@@ -4609,7 +4606,7 @@ void Hyper_heuristic::Q_Learning_Selection_Hyperheuristic_CMCEE(int max_time)
         // ------------------------------------------------------------
         auto t_hstart = std::chrono::steady_clock::now();
         ApplyMeta_Heuristic(i_next, team);
-        // ApplyHeuristic(i_next, team);
+         //ApplyHeuristic(i_next, team);
         double heuristic_time = std::chrono::duration<double>(
                                     std::chrono::steady_clock::now() - t_hstart)
                                     .count();
@@ -4620,7 +4617,8 @@ void Hyper_heuristic::Q_Learning_Selection_Hyperheuristic_CMCEE(int max_time)
         // ------------------------------------------------------------
         // EVALUATE
         // ------------------------------------------------------------
-        objective_Function1(team);
+        objective_Function(team);
+
 
         int new_eff = f_cur;
         int new_div = f_cur_div;
@@ -5373,7 +5371,7 @@ void Hyper_heuristic::MAB_Selection_Hyperheuristic_CMCEE(int max_time)
     // ------------------------------------------------------------
     // HEURISTICS AND MAB STRUCTURES
     // ------------------------------------------------------------
-    std::vector<int> heuristics = {1, 2, 3, 4, 5, 6, 7, 8};
+    std::vector<int> heuristics = {1, 2, 3, 4, 5};
     std::map<int, int> heuristic_selections;
     std::map<int, double> heuristic_credits;
 
@@ -6220,6 +6218,8 @@ int **Hyper_heuristic::apply_LLHop(int op_id, int **sol)
         return LLH14(sol);
     case 15:
         return LLH15(sol);
+    case 16:
+        return LLH16(sol);
     default:
         return sol;
     }
@@ -6425,7 +6425,7 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time)
         int selected_op = -1;
 
         // Force each operator to be tried once
-        for (int op = 1; op <= 15; op++)
+        for (int op = 1; op <= 16; op++)
         {
             if (op_counts[op] == 0)
             {
@@ -6438,13 +6438,13 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time)
         if (selected_op == -1)
         {
             double total_counts = 0;
-            for (int op = 1; op <= 15; op++)
+            for (int op = 1; op <= 16; op++)
                 total_counts += op_counts[op];
 
             double best_ucb = -1e18;
             double c = 1.0;
 
-            for (int op = 1; op <= 15; op++)
+            for (int op = 1; op <= 16; op++)
             {
                 double cnt = op_counts[op];
 
@@ -6481,12 +6481,12 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time)
         // ---------------- Apply LS + OP ----------------
         auto step_start = std::chrono::steady_clock::now();
         team = Apply_LS_OP(LSi, selected_op, team);
-        objective_Function1(team);
+        objective_Function(team);
         int new_eff = f_cur, new_div = f_cur_div;
         total_moves++;
 
         // ---------------- Q-Updates ----------------
-        double delta = compute_delta(new_eff, prev_eff);
+        double delta = new_eff - prev_eff;
         double r = reward_from_delta(delta);
         reward_hist.push_back(r);
 
@@ -6591,7 +6591,7 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time)
                   << " | BestDiv=" << best_div
                   << " | Delta=" << delta
                   << " | r=" << r
-                  << " | t=" << total_time << "ms\n";
+                  << " | t=" << total_time << "s\n";
     }
 
     // ---------------- Close Files ----------------
@@ -6650,6 +6650,7 @@ void Hyper_heuristic::TriLevel_HH_Qlearning_CMCEE(int max_time)
     std::cout << "Summary saved to: " << summary_file << "\n";
     std::cout << "===================================================================\n";
 }
+
 // Enumeration for menu options
 enum MenuOptions
 {
@@ -6956,9 +6957,22 @@ int main(int argc, char *argv[])
     }
 
     std::string datasetDir = "D:/Datasets/";
-    std::string resultsDir = "D:\\Datasets\\RESULTS_OF_HH_MODELS_ML_CMCEE\\";
+    std::string resultsDir = "D:/Datasets/RESULTS_OF_HH_MODELS_ML_CMCEE/";
 
+    // ----------------------------------------------------
+    // Create results directory if it does not exist
+    // ----------------------------------------------------
+    if (!fs::exists(resultsDir))
+    {
+        fs::create_directories(resultsDir);
+        std::cout << "Created folder: " << resultsDir << "\n";
+    }
+
+    // ----------------------------------------------------
+    // Read dataset files
+    // ----------------------------------------------------
     std::vector<std::string> datasetFiles;
+
     for (const auto &entry : fs::directory_iterator(datasetDir))
     {
         if (entry.is_regular_file())
@@ -7168,4 +7182,3 @@ int main(int argc, char *argv[])
     free_memory();
     return 0;
 }
-
