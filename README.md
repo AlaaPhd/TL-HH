@@ -30,7 +30,7 @@ Results will be automatically saved inside:
 
 Results will be saved inside the repository directory.
 
-** Citation **
+Citation 
 
 If you use this code in your research, please cite:
 
