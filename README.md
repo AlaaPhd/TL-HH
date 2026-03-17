@@ -29,3 +29,12 @@ Results will be automatically saved inside:
 		./CMCEE
 
 Results will be saved inside the repository directory.
+
+** Citation **
+
+If you use this code in your research, please cite:
+
+A. K. Abbas and E. Taha Yassen, 
+“Machine Learning-Driven Tri-Level Hyper-Heuristic Selection With Adaptive Move Acceptance for Composing Medical Crew Scheduling Problem,” 
+IEEE Access, vol. 14, pp. 37206–37232, 2026. 
+https://doi.org/10.1109/ACCESS.2026.3671676
